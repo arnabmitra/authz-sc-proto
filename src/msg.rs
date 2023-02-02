@@ -21,8 +21,7 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    /// Returns the address that is associated to this contract.
-    /// The address returned is the one that granted authz access to
-    /// claim rewards and delegate.
-    Granter {},
+    QueryGranter {
+        granter: String,
+    },
 }

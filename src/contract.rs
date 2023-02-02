@@ -1,19 +1,22 @@
-use cosmos_sdk_proto::cosmos::authz::v1beta1::MsgExec;
+use cosmos_sdk_proto::cosmos::authz::v1beta1::{MsgExec,QueryGrantsRequest,QueryGrantsResponse};
 use cosmos_sdk_proto::cosmos::bank::v1beta1::MsgSend;
 use cosmos_sdk_proto::cosmos::base::v1beta1::Coin;
 use cosmos_sdk_proto::cosmos::staking::v1beta1::MsgDelegate;
-
+use cosmos_sdk_proto::ibc::applications::transfer::v1::{
+    QueryDenomTraceRequest, QueryDenomTraceResponse,
+};
 use cosmos_sdk_proto::traits::Message;
 use cosmos_sdk_proto::traits::MessageExt;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+    to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult,QueryRequest,
 };
 use cw2::set_contract_version;
-
+use std::io::Cursor;
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::msg::QueryMsg::QueryGranter;
 use crate::state::{Config, CONFIG};
 // Get the protobuf file we care about
 // include!("protos/mod.rs");
@@ -77,15 +80,6 @@ pub fn execute(
     }
 }
 
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
-    match msg {
-        QueryMsg::Granter {} => {
-            let config = CONFIG.load(deps.storage)?;
-            to_binary(&config.granter)
-        }
-    }
-}
 
 pub fn execute_transfer(
     deps: DepsMut,
@@ -123,4 +117,31 @@ pub fn execute_transfer(
         .add_attribute("contract", "authz_demo")
         .add_attribute("method", "execute_transfer")
         .add_message(msg))
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn query(deps: Deps, _env: Env, queryMsg: QueryMsg) -> Result<Binary, ContractError> {
+    match msg {
+        QueryMsg::QueryGranter { granter } => {
+            println!("The granter is {}", granter);
+            let data = QueryGrantsRequest {
+                granter: granter.to_string(),
+                grantee: contract_address.to_string(),
+                msg_type_url: "".to_string(),
+                pagination: None,
+            }.encode_to_vec();;
+            let query = QueryRequest::Stargate {
+                path: "/cosmos.authz.v1beta1.Query/Grants".to_string(),
+                data: Binary::from(data),
+            };
+
+            let bin: Binary = deps.querier.query(&query)?;
+            let response = QueryGrantsRequest::decode(&mut Cursor::new(bin.to_vec()))
+                .map_err(ContractError::Decode)?;
+            match response.denom_trace {
+                None => Ok(to_binary("not_found")?),
+                Some(trace) => Ok(to_binary(&trace.base_denom)?),
+            }
+        },
+    }
 }
