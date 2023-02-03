@@ -1,4 +1,7 @@
-use cosmos_sdk_proto::cosmos::authz::v1beta1::{MsgExec,QueryGrantsRequest,QueryGrantsResponse};
+use crate::error::ContractError;
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg, QueryStargateResponse};
+use crate::state::{Config, CONFIG};
+use cosmos_sdk_proto::cosmos::authz::v1beta1::{MsgExec, QueryGrantsRequest, QueryGrantsResponse};
 use cosmos_sdk_proto::cosmos::bank::v1beta1::MsgSend;
 use cosmos_sdk_proto::cosmos::base::v1beta1::Coin;
 use cosmos_sdk_proto::cosmos::staking::v1beta1::MsgDelegate;
@@ -10,14 +13,12 @@ use cosmos_sdk_proto::traits::MessageExt;
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Response, StdResult,QueryRequest,
+    to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, QueryRequest,
+    Response, StdResult,
 };
 use cw2::set_contract_version;
+use serde::{Deserialize, Serialize};
 use std::io::Cursor;
-use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::msg::QueryMsg::QueryGranter;
-use crate::state::{Config, CONFIG};
 // Get the protobuf file we care about
 // include!("protos/mod.rs");
 
@@ -80,7 +81,6 @@ pub fn execute(
     }
 }
 
-
 pub fn execute_transfer(
     deps: DepsMut,
     _info: MessageInfo,
@@ -120,28 +120,51 @@ pub fn execute_transfer(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, queryMsg: QueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::QueryGranter { granter } => {
-            println!("The granter is {}", granter);
-            let data = QueryGrantsRequest {
-                granter: granter.to_string(),
-                grantee: contract_address.to_string(),
-                msg_type_url: "".to_string(),
-                pagination: None,
-            }.encode_to_vec();;
-            let query = QueryRequest::Stargate {
-                path: "/cosmos.authz.v1beta1.Query/Grants".to_string(),
-                data: Binary::from(data),
-            };
-
-            let bin: Binary = deps.querier.query(&query)?;
-            let response = QueryGrantsRequest::decode(&mut Cursor::new(bin.to_vec()))
-                .map_err(ContractError::Decode)?;
-            match response.denom_trace {
-                None => Ok(to_binary("not_found")?),
-                Some(trace) => Ok(to_binary(&trace.base_denom)?),
-            }
-        },
+        QueryMsg::QueryGranter { granter_address } => {
+            to_binary(&query_authz(deps, _env, granter_address)?)
+        }
+        QueryMsg::QueryIbcDenom { ibc_denom } => to_binary(&query_ibc(deps, ibc_denom)?),
     }
+}
+
+pub fn query_ibc(deps: Deps, denom: String) -> StdResult<QueryStargateResponse> {
+    let bin = QueryDenomTraceRequest {
+        hash: "295548A78785A1007F232DE286149A6FF512F180AF5657780FC89C009E2C348F".to_string(),
+    }
+    .encode_to_vec();
+
+    let data = Binary::from(bin);
+
+    let query = QueryRequest::Stargate {
+        path: "/ibc.applications.transfer.v1.Query/DenomHash".to_string(),
+        data,
+    };
+
+    let bin: Binary = deps.querier.query(&query)?;
+    let value = bin.to_string();
+
+    Ok(QueryStargateResponse { value })
+}
+
+pub fn query_authz(deps: Deps, env: Env, granter: String) -> StdResult<QueryStargateResponse> {
+    let contract_address = env.contract.address.to_string();
+
+    println!("The granter is {}", granter);
+    let data = QueryGrantsRequest {
+        granter: granter.to_string(),
+        grantee: contract_address.to_string(),
+        msg_type_url: "".to_string(),
+        pagination: None,
+    }
+    .encode_to_vec();
+    let query = QueryRequest::Stargate {
+        path: "/cosmos.authz.v1beta1.Query/Grantss".to_string(),
+        data: Binary::from(data),
+    };
+    let bin: Binary = deps.querier.query(&query)?;
+    let value = bin.to_string();
+
+    Ok(QueryStargateResponse { value })
 }

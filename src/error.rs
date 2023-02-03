@@ -1,3 +1,4 @@
+use cosmos_sdk_proto::prost::{DecodeError, EncodeError};
 use cosmwasm_std::StdError;
 use thiserror::Error;
 
@@ -5,6 +6,9 @@ use thiserror::Error;
 pub enum ContractError {
     #[error("ERR_STD|{0}")]
     Std(#[from] StdError),
+
+    #[error("ERR_STD|{0}")]
+    Decode(#[from] DecodeError),
 
     #[error("ERR_NO_SCHOLARSHIP|Sender not in scholarship list and must pay")]
     Unauthorized {},

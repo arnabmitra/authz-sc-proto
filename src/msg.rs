@@ -21,7 +21,12 @@ pub enum ExecuteMsg {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    QueryGranter {
-        granter: String,
-    },
+    QueryGranter { granter_address: String },
+    QueryIbcDenom { ibc_denom: String },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+pub struct QueryStargateResponse {
+    /// query response data in bytes, json-serialized, base64 encoded
+    pub value: String,
 }
